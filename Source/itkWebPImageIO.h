@@ -31,11 +31,6 @@ namespace itk
  *
  *  \brief Read WebPImage file format.
  *
- *  The WebP: Yet Another File Format is a fake fileformat introduced only
- *  for the purpose of testing the streaming capabilites of ITK.
- *
- * \warning DO NOT USE THIS FILEFORMAT FOR ANY SERIOUS PURPOSE.
- *
  *  \ingroup IOFilters
  */
 class ITK_EXPORT WebPImageIO : public ImageIOBase

@@ -107,10 +107,17 @@ void WebPImageIO::Read( void * buffer)
   std::cout << "streamable region size  = " << mx << " " << my << " " << std::endl;
   std::cout << "streamable region begin = " << sx << " " << sy << " " << std::endl;
 
-  const unsigned int RIFF_FILE_HDR_SZ  = 8;
+  const unsigned int RIFF_FILE_HDR_SZ  = 12;
+  const unsigned int VP8_HDR_SZ  = 4;
+  const unsigned int IVF_FRAME_HDR_SZ  = 12;
+
+  char    frame_hdr[IVF_FRAME_HDR_SZ];
+  char    frame[256*1024];
 
   std::ifstream    infile;
+
   char             file_hdr[RIFF_FILE_HDR_SZ];
+  char             vp8_hdr[VP8_HDR_SZ];
 
   infile.open( this->m_FileName.c_str() );
 
@@ -127,10 +134,75 @@ void WebPImageIO::Read( void * buffer)
          file_hdr[2]=='F' &&
          file_hdr[3]=='F')   )
     {
-    itkExceptionMacro(" " << this->m_FileName.c_str() << "is not an RIFF file.");
+    itkExceptionMacro(" " << this->m_FileName.c_str() << "is not a RIFF file.");
     }
 
+  if( !( file_hdr[ 8]=='W' &&
+         file_hdr[ 9]=='E' &&
+         file_hdr[10]=='B' &&
+         file_hdr[11]=='P')   )
+    {
+    itkExceptionMacro(" " << this->m_FileName.c_str() << "does not have an WEBP tag.");
+    }
+
+  vpx_codec_ctx_t  codec;
+  int              flags = 0;
+  int              frame_cnt = 0;
+
+  if(vpx_codec_dec_init(&codec, interface, NULL, flags))
+    {
+    itkExceptionMacro("Failed to initialize decoder");
+    }
+
+
+  infile.read( vp8_hdr, VP8_HDR_SZ );
+
+  if( !( vp8_hdr[0]=='V' &&
+         vp8_hdr[1]=='P' &&
+         vp8_hdr[2]=='8' &&
+         vp8_hdr[3]==' ')   )
+    {
+    itkExceptionMacro(" " << this->m_FileName.c_str() << "does not have an VP8 tag.");
+    }
+
+
   std::cout << "Using " << vpx_codec_iface_name(interface) << std::endl;
+
+  // check for eofbit or failbit
+  infile.read(frame_hdr, IVF_FRAME_HDR_SZ );
+
+  while( infile.rdstate() & std::ifstream::failbit )
+    {
+    unsigned int  frame_sz = 1000; // FIXME mem_get_le32(frame_hdr);
+    vpx_codec_iter_t  iter = NULL;
+    vpx_image_t      *img;
+
+    frame_cnt++;
+
+    if(frame_sz > sizeof(frame))
+      {
+      itkExceptionMacro("Frame " << frame_sz << " data too big for example code buffer");
+      }
+
+    infile.read( frame, frame_sz );
+
+    if( infile.rdstate() & std::ifstream::failbit )
+      {
+      itkExceptionMacro("Frame " << frame_cnt << "  failed to read complete frame");
+      }
+
+    void * frame_p = (void *)( frame );
+
+    if( vpx_codec_decode(&codec, frame_p, frame_sz, NULL, 0))
+      {
+      itkExceptionMacro("Failed to decode frame");
+      }
+
+    while( ( img = vpx_codec_get_frame( &codec, &iter ) ) )
+      {
+      }
+
+    }
 
   itkDebugMacro("WebPImageIO::Read() End");
 }
