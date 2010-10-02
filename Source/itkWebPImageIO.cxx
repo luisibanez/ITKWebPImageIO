@@ -23,6 +23,12 @@
 #include "itkWebPImageIO.h"
 #include "itksys/SystemTools.hxx"
 
+extern "C" {
+#include <vpx/vpx_codec.h>
+#include <vpx/vpx_image.h>
+#include <vpx/vp8.h>
+}
+
 namespace itk
 {
 
