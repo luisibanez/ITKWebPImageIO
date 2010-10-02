@@ -24,9 +24,10 @@
 #include "itksys/SystemTools.hxx"
 
 extern "C" {
-#include <vpx/vpx_codec.h>
-#include <vpx/vpx_image.h>
-#include <vpx/vp8.h>
+#define VPX_CODEC_DISABLE_COMPAT 1
+#include <vpx/vpx_decoder.h>
+#include <vpx/vp8dx.h>
+#define interface (&vpx_codec_vp8_dx_algo)
 }
 
 namespace itk
@@ -105,6 +106,31 @@ void WebPImageIO::Read( void * buffer)
   std::cout << "largest    region size  = " << nx << " " << ny << " " << std::endl;
   std::cout << "streamable region size  = " << mx << " " << my << " " << std::endl;
   std::cout << "streamable region begin = " << sx << " " << sy << " " << std::endl;
+
+  const unsigned int RIFF_FILE_HDR_SZ  = 8;
+
+  std::ifstream    infile;
+  char             file_hdr[RIFF_FILE_HDR_SZ];
+
+  infile.open( this->m_FileName.c_str() );
+
+  if( infile.fail() )
+    {
+    itkExceptionMacro("Failed to open " << this->m_FileName.c_str() << " for reading");
+    }
+
+  /* Read file header */
+  infile.read( file_hdr, RIFF_FILE_HDR_SZ );
+
+  if( !( file_hdr[0]=='R' &&
+         file_hdr[1]=='I' &&
+         file_hdr[2]=='F' &&
+         file_hdr[3]=='F')   )
+    {
+    itkExceptionMacro(" " << this->m_FileName.c_str() << "is not an RIFF file.");
+    }
+
+  std::cout << "Using " << vpx_codec_iface_name(interface) << std::endl;
 
   itkDebugMacro("WebPImageIO::Read() End");
 }

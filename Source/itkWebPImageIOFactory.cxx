@@ -51,7 +51,7 @@ extern "C"
 #ifdef _WIN32
 __declspec( dllexport )
 #endif
-  itk::ObjectFactoryBase* itkLoad()
+itk::ObjectFactoryBase* itkLoad()
 {
   std::cout << "Calling WebPImageIO itkLoad()" << std::endl;
   return itk::WebPImageIOFactory::FactoryNew();

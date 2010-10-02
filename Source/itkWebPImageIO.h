@@ -52,7 +52,7 @@ public:
   /** Run-time type information (and related methods). */
   itkTypeMacro(WebPImageIO, ImageIOBase);
 
- /*-------- This part of the interfaces deals with reading data. ----- */
+  /*-------- This part of the interfaces deals with reading data. ----- */
 
   /** Determine the file type. Returns true if this ImageIO can read the
    * file specified. */
@@ -77,10 +77,10 @@ public:
    * that the IORegions has been set properly. */
   virtual void Write(const void* buffer);
 
-/** Method for supporting streaming.  Given a requested region, determine what
- * could be the region that we can read from the file. This is called the
- * streamable region, which will be smaller than the LargestPossibleRegion and
- * greater or equal to the RequestedRegion */
+  /** Method for supporting streaming.  Given a requested region, determine what
+   * could be the region that we can read from the file. This is called the
+   * streamable region, which will be smaller than the LargestPossibleRegion and
+   * greater or equal to the RequestedRegion */
   virtual ImageIORegion
   GenerateStreamableReadRegionFromRequestedRegion( const ImageIORegion & requested ) const;
 

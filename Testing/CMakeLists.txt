@@ -1,3 +1,16 @@
 #
 #
 #
+SET(CXX_TEST_PATH ${EXECUTABLE_OUTPUT_PATH})
+SET(TEST_DATA_ROOT ${CMAKE_SOURCE_DIR}/Data)
+SET(TEMP ${CMAKE_BINARY_DIR}/Testing/Temporary)
+
+ADD_EXECUTABLE(itkWebPImageIOFactoryTest01 itkWebPImageIOFactoryTest01.cxx)
+TARGET_LINK_LIBRARIES(itkWebPImageIOFactoryTest01 WebPImageIO)
+
+ADD_EXECUTABLE(itkWebPImageIOTest00 itkWebPImageIOTest00.cxx)
+TARGET_LINK_LIBRARIES(itkWebPImageIOTest00 WebPImageIO)
+
+ADD_TEST(WebPTest00  ${CXX_TEST_PATH}/itkWebPImageIOFactoryTest01 )
+ADD_TEST(WebPTest01  ${CXX_TEST_PATH}/itkWebPImageIOTest00 )
+
