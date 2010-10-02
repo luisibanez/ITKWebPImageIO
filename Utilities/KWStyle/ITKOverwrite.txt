@@ -1,0 +1,4 @@
+itk.*\Test.*\.cxx Namespace Disable
+itk.*\Test.*\.h Namespace Disable
+convert.h Header Namespace IfNDefDefine Indent Disable
+convert.c Header Namespace IfNDefDefine Indent Disable

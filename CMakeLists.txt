@@ -1,0 +1,79 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+IF(COMMAND CMAKE_POLICY)
+  CMAKE_POLICY(SET CMP0003 NEW)
+ENDIF(COMMAND CMAKE_POLICY)
+
+PROJECT(WebPImageIO)
+
+#
+# Make possible to find FindWebP.cmake
+#
+SET(WebPImageIO_CMAKE_DIR "${WebPImageIO_SOURCE_DIR}/CMake" CACHE INTERNAL "")
+SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${WebPImageIO_CMAKE_DIR}")
+
+
+FIND_PACKAGE(ITK REQUIRED)
+INCLUDE(${ITK_USE_FILE})
+
+FIND_PACKAGE(WebP REQUIRED)
+
+INCLUDE_DIRECTORIES(${WEBP_INCLUDE_DIR})
+
+SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin CACHE INTERNAL "Where to put the executables")
+SET(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin CACHE INTERNAL "Where to put the libraries")
+
+INCLUDE(${PROJECT_SOURCE_DIR}/Utilities/KWStyle/KWStyle.cmake)
+
+INCLUDE(CTest)
+
+
+SET(CPACK_PACKAGE_NAME "WebPImageIO")
+SET(CPACK_PACKAGE_VENDOR "Insight Software Consortium")
+SET(CPACK_PACKAGE_VERSION_MAJOR "1")
+SET(CPACK_PACKAGE_VERSION_MINOR "0")
+SET(CPACK_PACKAGE_VERSION_PATCH "0")
+INCLUDE(CPack)
+
+
+INCLUDE_DIRECTORIES(
+  ${PROJECT_SOURCE_DIR}/Source
+  ${PROJECT_BINARY_DIR}/Source
+  )
+
+OPTION(BUILD_REPORTS "Generate articles for the Insight Journal" OFF)
+
+# Disable MSVC 8 warnings
+IF(WIN32)
+  OPTION(DISABLE_MSVC8_DEPRECATED_WARNINGS
+         "Disable Visual Studio 8 deprecated warnings" ON)
+  MARK_AS_ADVANCED(FORCE DISABLE_MSVC8_DEPRECATED_WARNINGS)
+  IF(DISABLE_MSVC8_DEPRECATED_WARNINGS)
+    ADD_DEFINITIONS(-D_CRT_SECURE_NO_DEPRECATE)
+  ENDIF(DISABLE_MSVC8_DEPRECATED_WARNINGS)
+ENDIF(WIN32)
+
+
+#-----------------------------------------------------------------------------
+# Setup file for setting custom ctest vars
+CONFIGURE_FILE(
+  ${PROJECT_SOURCE_DIR}/CTestCustom.cmake.in
+  ${PROJECT_BINARY_DIR}/CTestCustom.cmake
+  @ONLY
+  )
+
+
+#
+#  Path to the conformace WebP images that you can download from
+#
+#  http://code.google.com/speed/webp/gallery.html
+#
+#
+FIND_PATH(WebP_DATA_ROOT 1_original.jpg)
+
+ADD_SUBDIRECTORY( Source )
+ADD_SUBDIRECTORY( Testing )
+ADD_SUBDIRECTORY( Examples )
+
+IF( BUILD_REPORTS )
+  ADD_SUBDIRECTORY( Documents )
+ENDIF( BUILD_REPORTS )
