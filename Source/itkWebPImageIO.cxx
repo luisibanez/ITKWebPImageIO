@@ -191,7 +191,12 @@ void WebPImageIO::Read( void * buffer)
       itkExceptionMacro("Frame " << frame_cnt << "  failed to read complete frame");
       }
 
-    void * frame_p = (void *)( frame );
+    //
+    // FIXME: The compiler fiercly opposed the cast from char * to  uint8_t *... why ?
+    // The last resort solution was to use reinterpret_cast<>, 
+    // there is something suspicious about it...
+    //
+    const uint8_t * frame_p = reinterpret_cast< uint8_t *>( &frame[0] );
 
     if( vpx_codec_decode(&codec, frame_p, frame_sz, NULL, 0))
       {
