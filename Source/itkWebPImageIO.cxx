@@ -173,7 +173,7 @@ void WebPImageIO::Read( void * buffer)
 
   vpx_codec_ctx_t  codec;
   int              flags = 0;
-  int              frame_cnt = 0;
+  unsigned int     frame_counter = 0;
 
   if ( vpx_codec_dec_init(&codec, interface, NULL, flags ) )
     {
@@ -212,10 +212,8 @@ void WebPImageIO::Read( void * buffer)
     // FIXME: I had to subtract one from frame_sz to fit the remaining of the file size... why ?
     frame_sz--;
 
-    vpx_codec_iter_t  iter = NULL;
-    vpx_image_t      *img;
 
-    frame_cnt++;
+    frame_counter++;
 
     if ( frame_sz > sizeof(frame) )
       {
@@ -229,7 +227,7 @@ void WebPImageIO::Read( void * buffer)
 
     if( this->m_InputStream.gcount() != frame_sz )
       {
-      itkExceptionMacro("Frame " << frame_cnt << "  failed to read complete frame");
+      itkExceptionMacro("Frame " << frame_counter << "  failed to read complete frame");
       }
 
     expected_remaining_number_of_bytes_to_read -= frame_sz;
@@ -249,11 +247,42 @@ void WebPImageIO::Read( void * buffer)
       itkExceptionMacro("Failed to decode frame\n" << detail);
       }
 
+    vpx_codec_iter_t  iter = NULL;
+    vpx_image_t      *img;
+
     while( ( img = vpx_codec_get_frame( &codec, &iter ) ) )
       {
-      }
+      std::cout << "Image Size = " << std::endl;
+      std::cout << "X = " << img->d_w << std::endl;
+      std::cout << "Y = " << img->d_h << std::endl;
 
+      for ( unsigned int plane = 0; plane < 3; plane++ )
+        {
+        unsigned char *buf = img->planes[plane];
+
+        unsigned int plane_width  = img->d_w >> (plane?1:0);
+        unsigned int plane_height = img->d_h >> (plane?1:0);
+
+        std::cout << "plane = " << plane << std::endl;
+        std::cout << "plane_width  = " << plane_width  << std::endl;
+        std::cout << "plane_height = " << plane_height << std::endl;
+
+        for ( unsigned int y = 0; y < plane_height; y++)
+          {
+//           fwrite(buf, 1, img->d_w >> (plane?1:0), outfile);
+          buf += img->stride[plane];
+          }
+       }
+     }
+   }  // next frame
+
+  if ( vpx_codec_destroy(&codec) )
+    {
+    const char *detail = vpx_codec_error_detail(&codec);
+    itkExceptionMacro("Failed to destroy codec\n" << detail );
     }
+
+  this->m_InputStream.close();
 
   itkDebugMacro("WebPImageIO::Read() End");
 }
