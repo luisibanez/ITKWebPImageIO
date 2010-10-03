@@ -21,6 +21,7 @@
 #include "itkExceptionObject.h"
 #include "itkIOCommon.h"
 #include "itkWebPImageIO.h"
+#include "itkByteSwapper.h"
 #include "itksys/SystemTools.hxx"
 
 extern "C" {
@@ -123,15 +124,15 @@ void WebPImageIO::Read( void * buffer)
   std::cout << "streamable region size  = " << mx << " " << my << " " << std::endl;
   std::cout << "streamable region begin = " << sx << " " << sy << " " << std::endl;
 
-  const unsigned int RIFF_FILE_HDR_SZ  = 12;
+  const unsigned int RIFF_TAG_SIZE  = 4;
+  const unsigned int WEBP_TAG_SIZE  = 4;
   const unsigned int VP8_HDR_SZ  = 4;
-  const unsigned int IVF_FRAME_HDR_SZ  = 12;
 
-  char    frame_hdr[IVF_FRAME_HDR_SZ];
   char    frame[256*1024];
 
-  char             file_hdr[RIFF_FILE_HDR_SZ];
-  char             vp8_hdr[VP8_HDR_SZ];
+  char    riff_tag[RIFF_TAG_SIZE];
+  char    webp_tag[WEBP_TAG_SIZE];
+  char    vp8_hdr[VP8_HDR_SZ];
 
   this->m_InputStream.open( this->m_FileName.c_str() );
 
@@ -140,32 +141,44 @@ void WebPImageIO::Read( void * buffer)
     itkExceptionMacro("Failed to open " << this->m_FileName.c_str() << " for reading");
     }
 
-  /* Read file header */
-  this->m_InputStream.read( file_hdr, RIFF_FILE_HDR_SZ );
+  this->m_InputStream.read( riff_tag, RIFF_TAG_SIZE );
 
-  if( !( file_hdr[0]=='R' &&
-         file_hdr[1]=='I' &&
-         file_hdr[2]=='F' &&
-         file_hdr[3]=='F')   )
+  if( !( riff_tag[0]=='R' &&
+         riff_tag[1]=='I' &&
+         riff_tag[2]=='F' &&
+         riff_tag[3]=='F')   )
     {
     itkExceptionMacro(" " << this->m_FileName.c_str() << "is not a RIFF file.");
     }
 
-  if( !( file_hdr[ 8]=='W' &&
-         file_hdr[ 9]=='E' &&
-         file_hdr[10]=='B' &&
-         file_hdr[11]=='P')   )
+  uint32_t riff_block_sz;
+
+  this->ReadInteger32( &(this->m_InputStream), riff_block_sz );
+
+  std::cout << "RIFF block size = " << riff_block_sz << std::endl;
+
+  uint32_t expected_remaining_number_of_bytes_to_read = riff_block_sz;
+
+  this->m_InputStream.read( webp_tag, WEBP_TAG_SIZE );
+
+  if( !( webp_tag[0]=='W' &&
+         webp_tag[1]=='E' &&
+         webp_tag[2]=='B' &&
+         webp_tag[3]=='P')   )
     {
     itkExceptionMacro(" " << this->m_FileName.c_str() << "does not have an WEBP tag.");
     }
+
+  expected_remaining_number_of_bytes_to_read -= 4;
 
   vpx_codec_ctx_t  codec;
   int              flags = 0;
   int              frame_cnt = 0;
 
-  if(vpx_codec_dec_init(&codec, interface, NULL, flags))
+  if ( vpx_codec_dec_init(&codec, interface, NULL, flags ) )
     {
-    itkExceptionMacro("Failed to initialize decoder");
+    const char *detail = vpx_codec_error_detail(&codec);
+    itkExceptionMacro("Failed to initialize decoder \n" << detail);
     }
 
 
@@ -179,42 +192,61 @@ void WebPImageIO::Read( void * buffer)
     itkExceptionMacro(" " << this->m_FileName.c_str() << "does not have an VP8 tag.");
     }
 
+  expected_remaining_number_of_bytes_to_read -= 4;
 
   std::cout << "Using " << vpx_codec_iface_name(interface) << std::endl;
 
-  // check for eofbit or failbit
-  this->m_InputStream.read(frame_hdr, IVF_FRAME_HDR_SZ );
+  std::cout << "Starting to read frames" << std::endl;
+  std::cout << "Return of rdstate = " << this->m_InputStream.rdstate() << std::endl;
 
-  while( this->m_InputStream.rdstate() & std::ifstream::failbit )
+  while( expected_remaining_number_of_bytes_to_read > 1 )  // FIXME, it should be 0, this is due to the mismatch of the frame_sz by 1.
     {
-    unsigned int  frame_sz = 1000; // FIXME mem_get_le32(frame_hdr);
+    uint32_t frame_sz;
+
+    this->ReadInteger32( &(this->m_InputStream), frame_sz );
+
+    expected_remaining_number_of_bytes_to_read -= 4;
+
+    std::cout << "Frame size = " << frame_sz << std::endl;
+
+    // FIXME: I had to subtract one from frame_sz to fit the remaining of the file size... why ?
+    frame_sz--;
+
     vpx_codec_iter_t  iter = NULL;
     vpx_image_t      *img;
 
     frame_cnt++;
 
-    if(frame_sz > sizeof(frame))
+    if ( frame_sz > sizeof(frame) )
       {
       itkExceptionMacro("Frame " << frame_sz << " data too big for example code buffer");
       }
 
     this->m_InputStream.read( frame, frame_sz );
 
-    if( this->m_InputStream.rdstate() & std::ifstream::failbit )
+    std::cout << "Trying to read " << frame_sz << " bytes" << std::endl;
+    std::cout << "Read " << this->m_InputStream.gcount() << " bytes " << std::endl;
+
+    if( this->m_InputStream.gcount() != frame_sz )
       {
       itkExceptionMacro("Frame " << frame_cnt << "  failed to read complete frame");
       }
 
+    expected_remaining_number_of_bytes_to_read -= frame_sz;
+
+    std::cout << "expected_remaining_number_of_bytes_to_read = " << expected_remaining_number_of_bytes_to_read << std::endl;
+
     //
     // FIXME: The compiler fiercly opposed the cast from char * to  uint8_t *... why ?
-    // The last resort solution was to use reinterpret_cast<>, 
+    // The last resort solution was to use reinterpret_cast<>,
     // there is something suspicious about it...
     //
     const uint8_t * frame_p = reinterpret_cast< uint8_t *>( &frame[0] );
 
     if( vpx_codec_decode(&codec, frame_p, frame_sz, NULL, 0))
       {
-      itkExceptionMacro("Failed to decode frame");
+      const char *detail = vpx_codec_error_detail(&codec);
+      itkExceptionMacro("Failed to decode frame\n" << detail);
       }
 
     while( ( img = vpx_codec_get_frame( &codec, &iter ) ) )
@@ -251,6 +283,18 @@ void
 WebPImageIO
 ::Write( const void* buffer)
 {
+}
+
+
+void
+WebPImageIO
+::ReadInteger32( std::ifstream * inputStream, uint32_t & valueToRead )
+{
+  if( inputStream )
+    {
+    inputStream->read( (char *)(&valueToRead), sizeof(valueToRead) );
+    ByteSwapper<uint32_t>::SwapFromSystemToLittleEndian( &valueToRead );
+    }
 }
 
 

@@ -23,6 +23,7 @@
 
 #include <fstream>
 #include "itkImageIOBase.h"
+#include "itkIntTypes.h"
 
 namespace itk
 {
@@ -81,6 +82,9 @@ protected:
 private:
   WebPImageIO(const Self&); //purposely not implemented
   void operator=(const Self&); //purposely not implemented
+
+  // Read a four byte integer in binary regardless of endianess.
+  void ReadInteger32( std::ifstream * inputStream, uint32_t & valueToRead );
 
   std::ifstream     m_InputStream;
   std::ofstream     m_OutputStream;
