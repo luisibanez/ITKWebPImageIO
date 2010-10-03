@@ -7,9 +7,10 @@
 
 
 FIND_PATH(WEBP_INCLUDE_DIR vp8.h 
-/usr/local/include
-/usr/include
-)
+  /usr/local/include
+  /usr/include
+  /usr/local/include/vpx
+  )
 
 FIND_LIBRARY(WEBP_LIBRARY
   NAMES vpx
