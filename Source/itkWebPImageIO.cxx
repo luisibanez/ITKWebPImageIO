@@ -72,7 +72,9 @@ bool WebPImageIO::CanReadFile( const char* filename )
 
 void WebPImageIO::ReadImageInformation()
 {
-  // WebP only reads 8-bits unsigned char images.
+  // Assume that WebP only reads 8-bits unsigned char images.
+  // FIXME: We know that it also reads RGB and RGBA...
+  //
   this->SetPixelType( SCALAR );
   this->SetComponentType( UCHAR );
 
@@ -82,8 +84,22 @@ void WebPImageIO::ReadImageInformation()
     {
     itkExceptionMacro("Failed to open file " << this->m_InputStream );
     }
-}
 
+  m_Spacing[0] = 1.0;  // We'll look for WebP pixel size information later,
+  m_Spacing[1] = 1.0;  // but set the defaults now
+
+  m_Origin[0] = 0.0;
+  m_Origin[1] = 0.0;
+
+ // pull out the width/height
+  this->SetNumberOfDimensions(2);
+  m_Dimensions[0] = 800;  // FIXME: this is hardcoded by now..
+  m_Dimensions[1] = 440;  // FIXME: this is hardcoded by now..
+
+  this->m_InputStream.close();
+
+  return;
+}
 
 void WebPImageIO::Read( void * buffer)
 {
@@ -114,20 +130,18 @@ void WebPImageIO::Read( void * buffer)
   char    frame_hdr[IVF_FRAME_HDR_SZ];
   char    frame[256*1024];
 
-  std::ifstream    infile;
-
   char             file_hdr[RIFF_FILE_HDR_SZ];
   char             vp8_hdr[VP8_HDR_SZ];
 
-  infile.open( this->m_FileName.c_str() );
+  this->m_InputStream.open( this->m_FileName.c_str() );
 
-  if( infile.fail() )
+  if( this->m_InputStream.fail() )
     {
     itkExceptionMacro("Failed to open " << this->m_FileName.c_str() << " for reading");
     }
 
   /* Read file header */
-  infile.read( file_hdr, RIFF_FILE_HDR_SZ );
+  this->m_InputStream.read( file_hdr, RIFF_FILE_HDR_SZ );
 
   if( !( file_hdr[0]=='R' &&
          file_hdr[1]=='I' &&
@@ -155,7 +169,7 @@ void WebPImageIO::Read( void * buffer)
     }
 
 
-  infile.read( vp8_hdr, VP8_HDR_SZ );
+  this->m_InputStream.read( vp8_hdr, VP8_HDR_SZ );
 
   if( !( vp8_hdr[0]=='V' &&
          vp8_hdr[1]=='P' &&
@@ -169,9 +183,9 @@ void WebPImageIO::Read( void * buffer)
   std::cout << "Using " << vpx_codec_iface_name(interface) << std::endl;
 
   // check for eofbit or failbit
-  infile.read(frame_hdr, IVF_FRAME_HDR_SZ );
+  this->m_InputStream.read(frame_hdr, IVF_FRAME_HDR_SZ );
 
-  while( infile.rdstate() & std::ifstream::failbit )
+  while( this->m_InputStream.rdstate() & std::ifstream::failbit )
     {
     unsigned int  frame_sz = 1000; // FIXME mem_get_le32(frame_hdr);
     vpx_codec_iter_t  iter = NULL;
@@ -184,9 +198,9 @@ void WebPImageIO::Read( void * buffer)
       itkExceptionMacro("Frame " << frame_sz << " data too big for example code buffer");
       }
 
-    infile.read( frame, frame_sz );
+    this->m_InputStream.read( frame, frame_sz );
 
-    if( infile.rdstate() & std::ifstream::failbit )
+    if( this->m_InputStream.rdstate() & std::ifstream::failbit )
       {
       itkExceptionMacro("Frame " << frame_cnt << "  failed to read complete frame");
       }
@@ -237,26 +251,6 @@ void
 WebPImageIO
 ::Write( const void* buffer)
 {
-}
-
-/** Given a requested region, determine what could be the region that we can
- * read from the file. This is called the streamable region, which will be
- * smaller than the LargestPossibleRegion and greater or equal to the
-RequestedRegion */
-ImageIORegion
-WebPImageIO
-::GenerateStreamableReadRegionFromRequestedRegion( const ImageIORegion & requested ) const
-{
-  std::cout << "WebPImageIO::GenerateStreamableReadRegionFromRequestedRegion()" << std::endl;
-  std::cout << "Requested region = " << requested << std::endl;
-  //
-  // WebP is the ultimate streamer.
-  //
-  ImageIORegion streamableRegion = requested;
-
-  std::cout << "StreamableRegion = " << streamableRegion << std::endl;
-
-  return streamableRegion;
 }
 
 
