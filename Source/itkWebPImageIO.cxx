@@ -34,14 +34,26 @@ extern "C" {
 namespace itk
 {
 
+class WebPImageIOInternal
+{
+public:
+  vpx_codec_ctx_t   m_Codec;
+  char              m_Frame[256*1024];
+  unsigned int      m_FrameCounter;
+};
+
 WebPImageIO::WebPImageIO()
 {
   this->SetNumberOfDimensions(2); // WebP is 2D.
-  this->SetNumberOfComponents(1); // WebP only has one component.
+  this->SetNumberOfComponents(1); // WebP has three components (Isn't it ?), but here we just read the first one so far.
+
+  this->m_Internal = new WebPImageIOInternal;
+  this->m_Internal->m_FrameCounter = 0;
 }
 
 WebPImageIO::~WebPImageIO()
 {
+  delete this->m_Internal;
 }
 
 void WebPImageIO::PrintSelf(std::ostream& os, Indent indent) const
@@ -79,56 +91,19 @@ void WebPImageIO::ReadImageInformation()
   this->SetPixelType( SCALAR );
   this->SetComponentType( UCHAR );
 
-  this->m_InputStream.open( this->m_FileName.c_str() );
-
-  if( this->m_InputStream.fail() )
-    {
-    itkExceptionMacro("Failed to open file " << this->m_InputStream );
-    }
-
-  m_Spacing[0] = 1.0;  // We'll look for WebP pixel size information later,
-  m_Spacing[1] = 1.0;  // but set the defaults now
-
-  m_Origin[0] = 0.0;
-  m_Origin[1] = 0.0;
-
- // pull out the width/height
   this->SetNumberOfDimensions(2);
-  m_Dimensions[0] = 800;  // FIXME: this is hardcoded by now..
-  m_Dimensions[1] = 440;  // FIXME: this is hardcoded by now..
 
-  this->m_InputStream.close();
+  this->SetSpacing(0, 1.0);    // FIXME : Get the real pixel resolution.
+  this->SetSpacing(1, 1.0);    // FIXME : Get the real pixel resolution.
 
-  return;
-}
+  this->SetOrigin(0, 0.0);     // FIXME : Get the real coordinates of the origin.
+  this->SetOrigin(1, 0.0);     // FIXME : Get the real coordinates of the origin.
 
-void WebPImageIO::Read( void * buffer)
-{
-  itkDebugMacro("WebPImageIO::Read() Begin");
-
-  const unsigned int nx = this->GetDimensions( 0 );
-  const unsigned int ny = this->GetDimensions( 1 );
-
-  ImageIORegion regionToRead = this->GetIORegion();
-
-  ImageIORegion::SizeType  size  = regionToRead.GetSize();
-  ImageIORegion::IndexType start = regionToRead.GetIndex();
-
-  const unsigned int mx = size[0];
-  const unsigned int my = size[1];
-
-  const unsigned int sx = start[0];
-  const unsigned int sy = start[1];
-
-  std::cout << "largest    region size  = " << nx << " " << ny << " " << std::endl;
-  std::cout << "streamable region size  = " << mx << " " << my << " " << std::endl;
-  std::cout << "streamable region begin = " << sx << " " << sy << " " << std::endl;
 
   const unsigned int RIFF_TAG_SIZE  = 4;
   const unsigned int WEBP_TAG_SIZE  = 4;
   const unsigned int VP8_HDR_SZ  = 4;
 
-  char    frame[256*1024];
 
   char    riff_tag[RIFF_TAG_SIZE];
   char    webp_tag[WEBP_TAG_SIZE];
@@ -157,7 +132,7 @@ void WebPImageIO::Read( void * buffer)
 
   std::cout << "RIFF block size = " << riff_block_sz << std::endl;
 
-  uint32_t expected_remaining_number_of_bytes_to_read = riff_block_sz;
+  this->m_ExpectedRemainingNumberOfBytesToRead = riff_block_sz;
 
   this->m_InputStream.read( webp_tag, WEBP_TAG_SIZE );
 
@@ -169,18 +144,7 @@ void WebPImageIO::Read( void * buffer)
     itkExceptionMacro(" " << this->m_FileName.c_str() << "does not have an WEBP tag.");
     }
 
-  expected_remaining_number_of_bytes_to_read -= 4;
-
-  vpx_codec_ctx_t  codec;
-  int              flags = 0;
-  unsigned int     frame_counter = 0;
-
-  if ( vpx_codec_dec_init(&codec, interface, NULL, flags ) )
-    {
-    const char *detail = vpx_codec_error_detail(&codec);
-    itkExceptionMacro("Failed to initialize decoder \n" << detail);
-    }
-
+  this->m_ExpectedRemainingNumberOfBytesToRead -= 4;
 
   this->m_InputStream.read( vp8_hdr, VP8_HDR_SZ );
 
@@ -192,20 +156,162 @@ void WebPImageIO::Read( void * buffer)
     itkExceptionMacro(" " << this->m_FileName.c_str() << "does not have an VP8 tag.");
     }
 
-  expected_remaining_number_of_bytes_to_read -= 4;
+  this->m_ExpectedRemainingNumberOfBytesToRead -= 4;
+
+  int              flags = 0;
+
+  if ( vpx_codec_dec_init(&(this->m_Internal->m_Codec), interface, NULL, flags ) )
+    {
+    const char *detail = vpx_codec_error_detail(&(this->m_Internal->m_Codec));
+    itkExceptionMacro("Failed to initialize decoder \n" << detail);
+    }
 
   std::cout << "Using " << vpx_codec_iface_name(interface) << std::endl;
+
+  uint32_t frame_sz;
+
+  this->ReadInteger32( &(this->m_InputStream), frame_sz );
+
+  this->m_ExpectedRemainingNumberOfBytesToRead -= 4;
+
+  std::cout << "Frame size = " << frame_sz << std::endl;
+
+  // FIXME: I had to subtract one from frame_sz to fit the remaining of the file size... why ?
+  frame_sz--;
+
+  this->m_Internal->m_FrameCounter++;
+
+  if ( frame_sz > sizeof(this->m_Internal->m_Frame) )
+    {
+    itkExceptionMacro("Frame " << frame_sz << " data too big for example code buffer");
+    }
+
+  //
+  // Unfortunately, so far, we haven't found a way of reading the image data
+  // without having to read the entire frame. Hopefully there is a more efficient
+  // way of getting the values of image width and height. This must be revisited.
+  //
+  this->m_InputStream.read( this->m_Internal->m_Frame, frame_sz );
+
+  std::cout << "Trying to read " << frame_sz << " bytes" << std::endl;
+  std::cout << "Read " << this->m_InputStream.gcount() << " bytes " << std::endl;
+
+  if( this->m_InputStream.gcount() != frame_sz )
+    {
+    itkExceptionMacro("Frame " << this->m_Internal->m_FrameCounter << "  failed to read complete frame");
+    }
+
+  this->m_ExpectedRemainingNumberOfBytesToRead -= frame_sz;
+
+  std::cout << "this->m_ExpectedRemainingNumberOfBytesToRead = " << this->m_ExpectedRemainingNumberOfBytesToRead << std::endl;
+
+  //
+  // FIXME: The compiler fiercly opposed the cast from char * to  uint8_t *... why ?
+  // The last resort solution was to use reinterpret_cast<>,
+  // there is something suspicious about it...
+  //
+  const uint8_t * frame_p = reinterpret_cast< uint8_t *>( & (this->m_Internal->m_Frame[0]) );
+
+  //
+  // Again, here we decode the entire frame, despite the fact that we are just
+  // looking for the values of image width and height. This must be revisited.
+  //
+  if( vpx_codec_decode(&(this->m_Internal->m_Codec), frame_p, frame_sz, NULL, 0))
+    {
+    const char *detail = vpx_codec_error_detail(&(this->m_Internal->m_Codec));
+    itkExceptionMacro("Failed to decode frame\n" << detail);
+    }
+
+  vpx_codec_iter_t  iter = NULL;
+  vpx_image_t      *img;
+
+  if( ( img = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &iter ) ) )
+    {
+    std::cout << "Image Size = " << std::endl;
+    std::cout << "X = " << img->d_w << std::endl;
+    std::cout << "Y = " << img->d_h << std::endl;
+    this->SetDimensions(0,  img->d_w );
+    this->SetDimensions(1,  img->d_h );
+    }
+  else
+    {
+    itkExceptionMacro("Problem found while getting one frame");
+    }
+}
+
+void WebPImageIO::Read( void * buffer)
+{
+  itkDebugMacro("WebPImageIO::Read() Begin");
+
+  const unsigned int nx = this->GetDimensions( 0 );
+  const unsigned int ny = this->GetDimensions( 1 );
+
+  ImageIORegion regionToRead = this->GetIORegion();
+
+  ImageIORegion::SizeType  size  = regionToRead.GetSize();
+  ImageIORegion::IndexType start = regionToRead.GetIndex();
+
+  const unsigned int mx = size[0];
+  const unsigned int my = size[1];
+
+  const unsigned int sx = start[0];
+  const unsigned int sy = start[1];
+
+  std::cout << "largest    region size  = " << nx << " " << ny << " " << std::endl;
+  std::cout << "streamable region size  = " << mx << " " << my << " " << std::endl;
+  std::cout << "streamable region begin = " << sx << " " << sy << " " << std::endl;
 
   std::cout << "Starting to read frames" << std::endl;
   std::cout << "Return of rdstate = " << this->m_InputStream.rdstate() << std::endl;
 
-  while( expected_remaining_number_of_bytes_to_read > 1 )  // FIXME, it should be 0, this is due to the mismatch of the frame_sz by 1.
+  unsigned char * destinationCharBuffer = (unsigned char *)buffer;
+
+  //
+  // Continue with the reading that we started in ReadImageInformation()
+  //
+  vpx_codec_iter_t  iter = NULL;
+  vpx_image_t      *img;
+
+  while( ( img = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &iter ) ) )
+    {
+    std::cout << "Image Size = " << std::endl;
+    std::cout << "X = " << img->d_w << std::endl;
+    std::cout << "Y = " << img->d_h << std::endl;
+
+    for ( unsigned int plane = 0; plane < 3; plane++ )
+      {
+      unsigned char * sourceCharBuffer = img->planes[plane];
+
+      unsigned int plane_width  = img->d_w >> (plane?1:0);
+      unsigned int plane_height = img->d_h >> (plane?1:0);
+
+      std::cout << "plane = " << plane << std::endl;
+      std::cout << "plane_width  = " << plane_width  << std::endl;
+      std::cout << "plane_height = " << plane_height << std::endl;
+
+
+      for ( unsigned int y = 0; y < plane_height; y++)
+        {
+        memcpy( destinationCharBuffer, sourceCharBuffer, plane_width );
+        sourceCharBuffer += img->stride[plane];
+        }
+      }
+    }
+
+
+  //
+  //   Now, see if there are more frames
+  //
+  //   ...Should we make a 3D image with them ?
+  //
+
+  while( this->m_ExpectedRemainingNumberOfBytesToRead > 1 )  // FIXME, it should be 0, this is due to the mismatch of the frame_sz by 1.
     {
     uint32_t frame_sz;
 
     this->ReadInteger32( &(this->m_InputStream), frame_sz );
 
-    expected_remaining_number_of_bytes_to_read -= 4;
+    this->m_ExpectedRemainingNumberOfBytesToRead -= 4;
 
     std::cout << "Frame size = " << frame_sz << std::endl;
 
@@ -213,44 +319,41 @@ void WebPImageIO::Read( void * buffer)
     frame_sz--;
 
 
-    frame_counter++;
+    this->m_Internal->m_FrameCounter++;
 
-    if ( frame_sz > sizeof(frame) )
+    if ( frame_sz > sizeof(this->m_Internal->m_Frame) )
       {
       itkExceptionMacro("Frame " << frame_sz << " data too big for example code buffer");
       }
 
-    this->m_InputStream.read( frame, frame_sz );
+    this->m_InputStream.read( this->m_Internal->m_Frame, frame_sz );
 
     std::cout << "Trying to read " << frame_sz << " bytes" << std::endl;
     std::cout << "Read " << this->m_InputStream.gcount() << " bytes " << std::endl;
 
     if( this->m_InputStream.gcount() != frame_sz )
       {
-      itkExceptionMacro("Frame " << frame_counter << "  failed to read complete frame");
+      itkExceptionMacro("Frame " << this->m_Internal->m_FrameCounter << "  failed to read complete frame");
       }
 
-    expected_remaining_number_of_bytes_to_read -= frame_sz;
+    this->m_ExpectedRemainingNumberOfBytesToRead -= frame_sz;
 
-    std::cout << "expected_remaining_number_of_bytes_to_read = " << expected_remaining_number_of_bytes_to_read << std::endl;
+    std::cout << "this->m_ExpectedRemainingNumberOfBytesToRead = " << this->m_ExpectedRemainingNumberOfBytesToRead << std::endl;
 
     //
     // FIXME: The compiler fiercly opposed the cast from char * to  uint8_t *... why ?
     // The last resort solution was to use reinterpret_cast<>,
     // there is something suspicious about it...
     //
-    const uint8_t * frame_p = reinterpret_cast< uint8_t *>( &frame[0] );
+    const uint8_t * frame_p = reinterpret_cast< uint8_t *>( & (this->m_Internal->m_Frame[0]) );
 
-    if( vpx_codec_decode(&codec, frame_p, frame_sz, NULL, 0))
+    if( vpx_codec_decode(&(this->m_Internal->m_Codec), frame_p, frame_sz, NULL, 0))
       {
-      const char *detail = vpx_codec_error_detail(&codec);
+      const char *detail = vpx_codec_error_detail(&(this->m_Internal->m_Codec));
       itkExceptionMacro("Failed to decode frame\n" << detail);
       }
 
-    vpx_codec_iter_t  iter = NULL;
-    vpx_image_t      *img;
-
-    while( ( img = vpx_codec_get_frame( &codec, &iter ) ) )
+    while( ( img = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &iter ) ) )
       {
       std::cout << "Image Size = " << std::endl;
       std::cout << "X = " << img->d_w << std::endl;
@@ -276,9 +379,9 @@ void WebPImageIO::Read( void * buffer)
      }
    }  // next frame
 
-  if ( vpx_codec_destroy(&codec) )
+  if ( vpx_codec_destroy(&(this->m_Internal->m_Codec)) )
     {
-    const char *detail = vpx_codec_error_detail(&codec);
+    const char *detail = vpx_codec_error_detail(&(this->m_Internal->m_Codec));
     itkExceptionMacro("Failed to destroy codec\n" << detail );
     }
 

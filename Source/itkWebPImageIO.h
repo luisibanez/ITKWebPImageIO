@@ -28,6 +28,8 @@
 namespace itk
 {
 
+class WebPImageIOInternal;
+
 /** \class WebPImageIO
  *
  *  \brief Read WebPImage file format.
@@ -88,8 +90,10 @@ private:
 
   std::ifstream     m_InputStream;
   std::ofstream     m_OutputStream;
-  std::string       m_RawDataFilename;
 
+  uint32_t          m_ExpectedRemainingNumberOfBytesToRead;
+
+  WebPImageIOInternal *  m_Internal;
 };
 
 } // end namespace itk
