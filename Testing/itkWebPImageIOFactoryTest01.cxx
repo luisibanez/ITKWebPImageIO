@@ -20,6 +20,9 @@
 
 int main( int argc, char ** argv )
 {
+  (void) argc;
+  (void) argv;
+
   //  Register the factory
   itk::WebPImageIOFactory::RegisterOneFactory();
 

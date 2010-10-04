@@ -20,6 +20,9 @@
 
 int main( int argc, char ** argv )
 {
+  (void) argc;
+  (void) argv;
+
   itk::WebPImageIO::Pointer imageIO = itk::WebPImageIO::New();
 
   std::cout << "ClassName = " << imageIO->GetNameOfClass() << std::endl;
