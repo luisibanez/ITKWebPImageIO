@@ -40,6 +40,8 @@ public:
   vpx_codec_ctx_t   m_Codec;
   char              m_Frame[256*1024];
   unsigned int      m_FrameCounter;
+  vpx_image_t *     m_Image;
+  vpx_codec_iter_t  m_Iteration;
 };
 
 WebPImageIO::WebPImageIO()
@@ -48,7 +50,9 @@ WebPImageIO::WebPImageIO()
   this->SetNumberOfComponents(1); // WebP has three components (Isn't it ?), but here we just read the first one so far.
 
   this->m_Internal = new WebPImageIOInternal;
+
   this->m_Internal->m_FrameCounter = 0;
+  this->m_Internal->m_Iteration = NULL;
 
   this->AddSupportedReadExtension(".webp");
 
@@ -226,16 +230,15 @@ void WebPImageIO::ReadImageInformation()
     itkExceptionMacro("Failed to decode frame\n" << detail);
     }
 
-  vpx_codec_iter_t  iter = NULL;
-  vpx_image_t      *img;
+  this->m_Internal->m_Iteration = NULL;
 
-  if( ( img = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &iter ) ) )
+  if( ( this->m_Internal->m_Image = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &(this->m_Internal->m_Iteration) ) ) )
     {
     std::cout << "Image Size = " << std::endl;
-    std::cout << "X = " << img->d_w << std::endl;
-    std::cout << "Y = " << img->d_h << std::endl;
-    this->SetDimensions(0,  img->d_w );
-    this->SetDimensions(1,  img->d_h );
+    std::cout << "X = " << this->m_Internal->m_Image->d_w << std::endl;
+    std::cout << "Y = " << this->m_Internal->m_Image->d_h << std::endl;
+    this->SetDimensions(0,  this->m_Internal->m_Image->d_w );
+    this->SetDimensions(1,  this->m_Internal->m_Image->d_h );
     }
   else
     {
@@ -273,21 +276,20 @@ void WebPImageIO::Read( void * buffer)
   //
   // Continue with the reading that we started in ReadImageInformation()
   //
-  vpx_codec_iter_t  iter = NULL;
-  vpx_image_t      *img;
+  this->m_Internal->m_Iteration = NULL;
 
-  while( ( img = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &iter ) ) )
+  while( ( this->m_Internal->m_Image = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &(this->m_Internal->m_Iteration) ) ) )
     {
     std::cout << "Image Size = " << std::endl;
-    std::cout << "X = " << img->d_w << std::endl;
-    std::cout << "Y = " << img->d_h << std::endl;
+    std::cout << "X = " << this->m_Internal->m_Image->d_w << std::endl;
+    std::cout << "Y = " << this->m_Internal->m_Image->d_h << std::endl;
 
     for ( unsigned int plane = 0; plane < 3; plane++ )
       {
-      unsigned char * sourceCharBuffer = img->planes[plane];
+      unsigned char * sourceCharBuffer = this->m_Internal->m_Image->planes[plane];
 
-      unsigned int plane_width  = img->d_w >> (plane?1:0);
-      unsigned int plane_height = img->d_h >> (plane?1:0);
+      unsigned int plane_width  = this->m_Internal->m_Image->d_w >> (plane?1:0);
+      unsigned int plane_height = this->m_Internal->m_Image->d_h >> (plane?1:0);
 
       std::cout << "plane = " << plane << std::endl;
       std::cout << "plane_width  = " << plane_width  << std::endl;
@@ -297,7 +299,7 @@ void WebPImageIO::Read( void * buffer)
       for ( unsigned int y = 0; y < plane_height; y++)
         {
         memcpy( destinationCharBuffer, sourceCharBuffer, plane_width );
-        sourceCharBuffer += img->stride[plane];
+        sourceCharBuffer += this->m_Internal->m_Image->stride[plane];
         destinationCharBuffer += plane_width;
         }
       }
@@ -352,24 +354,24 @@ void WebPImageIO::Read( void * buffer)
     //
     const uint8_t * frame_p = reinterpret_cast< uint8_t *>( & (this->m_Internal->m_Frame[0]) );
 
-    if( vpx_codec_decode(&(this->m_Internal->m_Codec), frame_p, frame_sz, NULL, 0))
+    if( vpx_codec_decode(&(this->m_Internal->m_Codec), frame_p, frame_sz, NULL, 0) )
       {
       const char *detail = vpx_codec_error_detail(&(this->m_Internal->m_Codec));
       itkExceptionMacro("Failed to decode frame\n" << detail);
       }
 
-    while( ( img = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &iter ) ) )
+    while( ( this->m_Internal->m_Image = vpx_codec_get_frame( &(this->m_Internal->m_Codec), &(this->m_Internal->m_Iteration) ) ) )
       {
       std::cout << "Image Size = " << std::endl;
-      std::cout << "X = " << img->d_w << std::endl;
-      std::cout << "Y = " << img->d_h << std::endl;
+      std::cout << "X = " << this->m_Internal->m_Image->d_w << std::endl;
+      std::cout << "Y = " << this->m_Internal->m_Image->d_h << std::endl;
 
       for ( unsigned int plane = 0; plane < 3; plane++ )
         {
-        unsigned char *buf = img->planes[plane];
+        unsigned char *buf = this->m_Internal->m_Image->planes[plane];
 
-        unsigned int plane_width  = img->d_w >> (plane?1:0);
-        unsigned int plane_height = img->d_h >> (plane?1:0);
+        unsigned int plane_width  = this->m_Internal->m_Image->d_w >> (plane?1:0);
+        unsigned int plane_height = this->m_Internal->m_Image->d_h >> (plane?1:0);
 
         std::cout << "plane = " << plane << std::endl;
         std::cout << "plane_width  = " << plane_width  << std::endl;
@@ -377,18 +379,18 @@ void WebPImageIO::Read( void * buffer)
 
         for ( unsigned int y = 0; y < plane_height; y++)
           {
-//           fwrite(buf, 1, img->d_w >> (plane?1:0), outfile);
-          buf += img->stride[plane];
+//           fwrite(buf, 1, this->m_Internal->m_Image->d_w >> (plane?1:0), outfile);
+          buf += this->m_Internal->m_Image->stride[plane];
           }
        }
      }
    }  // next frame
 
-  if ( vpx_codec_destroy(&(this->m_Internal->m_Codec)) )
-    {
-    const char *detail = vpx_codec_error_detail(&(this->m_Internal->m_Codec));
-    itkExceptionMacro("Failed to destroy codec\n" << detail );
-    }
+// if ( vpx_codec_destroy(&(this->m_Internal->m_Codec)) )
+//   {
+//   const char *detail = vpx_codec_error_detail(&(this->m_Internal->m_Codec));
+//   itkExceptionMacro("Failed to destroy codec\n" << detail );
+//   }
 
   this->m_InputStream.close();
 

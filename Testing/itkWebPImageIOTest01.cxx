@@ -53,9 +53,24 @@ int main( int argc, char ** argv )
   const std::string outputFilename = argv[2];
 
   reader->SetFileName( inputFilename  );
+
+  std::cout << "Output filename = " << outputFilename << std::endl;
   writer->SetFileName( outputFilename );
 
   writer->SetInput( reader->GetOutput() );
+
+  try
+    {
+    reader->Update();
+    }
+  catch( itk::ExceptionObject & err )
+    {
+    std::cerr << "ExceptionObject caught !" << std::endl;
+    std::cerr << err << std::endl;
+    return EXIT_FAILURE;
+    }
+
+  reader->GetOutput()->Print( std::cout );
 
   try
     {
@@ -67,6 +82,8 @@ int main( int argc, char ** argv )
     std::cerr << err << std::endl;
     return EXIT_FAILURE;
     }
+
+
   return EXIT_SUCCESS;
 }
 
