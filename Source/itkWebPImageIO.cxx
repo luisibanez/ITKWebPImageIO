@@ -49,6 +49,10 @@ WebPImageIO::WebPImageIO()
 
   this->m_Internal = new WebPImageIOInternal;
   this->m_Internal->m_FrameCounter = 0;
+
+  this->AddSupportedReadExtension(".webp");
+
+  this->AddSupportedWriteExtension(".webp");
 }
 
 WebPImageIO::~WebPImageIO()
@@ -294,6 +298,7 @@ void WebPImageIO::Read( void * buffer)
         {
         memcpy( destinationCharBuffer, sourceCharBuffer, plane_width );
         sourceCharBuffer += img->stride[plane];
+        destinationCharBuffer += plane_width;
         }
       }
     }
